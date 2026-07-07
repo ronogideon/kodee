@@ -29,7 +29,10 @@ app.use(
 );
 app.use(express.json());
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, service: "kodee" }));
+const VERSION = "1.0.5";
+app.get("/api/health", (_req, res) =>
+  res.json({ ok: true, service: "kodee", version: VERSION })
+);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/landlord", landlordRoutes);

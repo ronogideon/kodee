@@ -46,17 +46,17 @@ Build/deploy are automatic: Nixpacks installs (the `postinstall` runs `prisma ge
 - **New** → **GitHub Repo** → same repo.
 - **Settings → Root Directory:** `admin`
 - **Generate Domain.**
-- **Variables** (Vite inlines this at **build** time, so it must be set before the build):
+- **Variables** — the API URL is read at **container start** (not build), so a plain redeploy/restart picks up changes; no rebuild needed:
 
   ```
-  VITE_API_URL=https://${{kodee-backend.RAILWAY_PUBLIC_DOMAIN}}/api
+  API_URL=https://${{kodee-backend.RAILWAY_PUBLIC_DOMAIN}}/api
   ```
 
-  (Or hardcode `https://<backend-domain>/api`. Note the trailing `/api`.)
+  (Or a literal `https://<backend-domain>/api`. A bare origin without `/api` also works — the start script appends it.)
 
 ## 5. Portal service (`kodee-portal`)
 
-Same as admin, Root Directory `portal`, same `VITE_API_URL`.
+Same as admin, Root Directory `portal`, same `API_URL`.
 
 ## 6. Close the CORS loop
 
@@ -68,7 +68,7 @@ CORS_ORIGINS=https://${{kodee-admin.RAILWAY_PUBLIC_DOMAIN}},https://${{kodee-por
 
 Redeploy the backend. Done — the API now only accepts the two frontends, and each frontend talks to the API.
 
-> **Deploy order matters** because `VITE_API_URL` is baked into the frontend bundle at build. Backend domain first, then build the frontends. If you ever change the backend domain, redeploy the frontends.
+> The frontends read `API_URL` at **container start** (a small script writes `dist/env.js`), so changing the backend URL only needs a redeploy/restart of the frontend — never a rebuild. The reference-variable form still needs the backend service to exist so `${{kodee-backend.RAILWAY_PUBLIC_DOMAIN}}` resolves; if it ever resolves empty, the app falls back to `/api` and login will report exactly that.
 
 ## 7. Seed once (optional demo data)
 

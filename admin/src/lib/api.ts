@@ -1,4 +1,7 @@
-const BASE = (import.meta as any).env?.VITE_API_URL || "/api";
+const BASE =
+  (typeof window !== "undefined" && (window as any).__KODEE_API__) ||
+  (import.meta as any).env?.VITE_API_URL ||
+  "/api";
 
 let token: string | null = localStorage.getItem("kodee_token");
 
