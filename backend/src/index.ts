@@ -8,7 +8,25 @@ import caretakerRoutes from "./routes/caretaker";
 import { startScheduler } from "./scheduler";
 
 const app = express();
-app.use(cors());
+
+// Allowed origins come from CORS_ORIGINS (comma-separated). Blank = allow all (dev).
+const allowedOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // Allow non-browser clients (no origin) and anything when the list is empty.
+      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        return cb(null, true);
+      }
+      return cb(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, service: "kodee" }));
@@ -25,7 +43,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 const PORT = Number(process.env.PORT || 4000);
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Kodee API listening on :${PORT}`);
   startScheduler();
 });

@@ -1,15 +1,13 @@
 // Kodee — property management data model
-// SQLite for v1. To move to Postgres (like Dartbit): change provider to
-// "postgresql" and set DATABASE_URL to your connection string. Enum-style
-// fields are plain strings (SQLite has no native enums); allowed values are
-// documented in src/constants.ts.
+// Postgres (Railway). DATABASE_URL is provided by the Railway Postgres plugin.
+// Enum-style fields are plain strings; allowed values live in src/constants.ts.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
