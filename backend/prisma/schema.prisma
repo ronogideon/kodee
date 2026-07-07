@@ -1,0 +1,192 @@
+// Kodee — property management data model
+// SQLite for v1. To move to Postgres (like Dartbit): change provider to
+// "postgresql" and set DATABASE_URL to your connection string. Enum-style
+// fields are plain strings (SQLite has no native enums); allowed values are
+// documented in src/constants.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String
+  passwordHash String
+  role         String // LANDLORD | RENTER | CARETAKER
+  // For caretakers/renters: which landlord they belong to (scoping).
+  landlordId   String?
+  landlord     User?    @relation("LandlordStaff", fields: [landlordId], references: [id])
+  staff        User[]   @relation("LandlordStaff")
+
+  properties Property[] @relation("LandlordProperties")
+  tenancies  Tenancy[]  @relation("RenterTenancies")
+  readings   MeterReading[] @relation("CaretakerReadings")
+
+  createdAt DateTime @default(now())
+}
+
+model Property {
+  id              String   @id @default(cuid())
+  landlordId      String
+  landlord        User     @relation("LandlordProperties", fields: [landlordId], references: [id])
+  name            String
+  address         String
+  city            String   @default("Nairobi")
+  // Property-level defaults; a unit can override these.
+  waterRatePerCbm Float    @default(150) // KES per cubic metre
+  garbageFee      Float    @default(200)
+
+  units    Unit[]
+  expenses Expense[]
+
+  createdAt DateTime @default(now())
+}
+
+model Unit {
+  id         String  @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  label      String   // e.g. "A1", "Unit 3"
+  type       String   // STUDIO | SINGLE | DOUBLE | BR1..BR6
+  rent       Float
+  deposit    Float    @default(0)
+  status     String   @default("VACANT") // VACANT | OCCUPIED
+
+  // Utility profile — each unit decides which utilities apply.
+  hasWater       Boolean @default(true)
+  hasGarbage     Boolean @default(true)
+  hasElectricity Boolean @default(false)
+  // Optional per-unit overrides (fall back to property defaults / flat rates).
+  waterRatePerCbm Float?
+  garbageFee      Float?
+  electricityFlat Float?  // flat monthly electricity charge, if metered-flat
+
+  tenancies Tenancy[]
+  readings  MeterReading[]
+  tickets   Ticket[]
+  expenses  Expense[]
+
+  createdAt DateTime @default(now())
+}
+
+// A tenancy is one renter occupying one unit for a period.
+// History is preserved: ending a tenancy sets active=false + endDate,
+// and frees the unit, but the row (and its invoices/payments) remain.
+model Tenancy {
+  id        String   @id @default(cuid())
+  unitId    String
+  unit      Unit     @relation(fields: [unitId], references: [id])
+  renterId  String
+  renter    User     @relation("RenterTenancies", fields: [renterId], references: [id])
+  startDate DateTime @default(now())
+  endDate   DateTime?
+  active    Boolean  @default(true)
+
+  invoices  Invoice[]
+  payments  Payment[]
+  readings  MeterReading[]
+  tickets   Ticket[]
+  notices   Notice[]
+
+  createdAt DateTime @default(now())
+}
+
+model MeterReading {
+  id           String   @id @default(cuid())
+  unitId       String
+  unit         Unit     @relation(fields: [unitId], references: [id])
+  tenancyId    String?
+  tenancy      Tenancy? @relation(fields: [tenancyId], references: [id])
+  caretakerId  String?
+  caretaker    User?    @relation("CaretakerReadings", fields: [caretakerId], references: [id])
+  period       String   // YYYY-MM
+  previous     Float    @default(0)
+  current      Float
+  consumption  Float    @default(0) // current - previous, in cbm
+  ratePerCbm   Float
+  amount       Float    @default(0) // consumption * ratePerCbm
+  createdAt    DateTime @default(now())
+
+  @@unique([unitId, period])
+}
+
+model Invoice {
+  id               String   @id @default(cuid())
+  tenancyId        String
+  tenancy          Tenancy  @relation(fields: [tenancyId], references: [id])
+  period           String   // YYYY-MM
+  rentAmount       Float    @default(0)
+  waterAmount      Float    @default(0)
+  garbageAmount    Float    @default(0)
+  electricityAmount Float   @default(0)
+  otherAmount      Float    @default(0)
+  total            Float    @default(0)
+  amountPaid       Float    @default(0)
+  status           String   @default("PENDING") // PENDING | PARTIAL | PAID | OVERDUE
+  dueDate          DateTime
+  reminderSentAt   DateTime?
+  createdAt        DateTime @default(now())
+
+  payments Payment[]
+
+  @@unique([tenancyId, period])
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  tenancyId String
+  tenancy   Tenancy  @relation(fields: [tenancyId], references: [id])
+  amount    Float
+  method    String   @default("MPESA") // MPESA | CASH | BANK
+  reference String?
+  paidAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+}
+
+model Ticket {
+  id          String   @id @default(cuid())
+  tenancyId   String
+  tenancy     Tenancy  @relation(fields: [tenancyId], references: [id])
+  unitId      String
+  unit        Unit     @relation(fields: [unitId], references: [id])
+  title       String
+  description String
+  category    String   @default("GENERAL") // PLUMBING | ELECTRICAL | STRUCTURAL | APPLIANCE | GENERAL
+  priority    String   @default("MEDIUM")  // LOW | MEDIUM | HIGH | URGENT
+  status      String   @default("OPEN")    // OPEN | IN_PROGRESS | RESOLVED | CLOSED
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+}
+
+model Notice {
+  id          String   @id @default(cuid())
+  tenancyId   String
+  tenancy     Tenancy  @relation(fields: [tenancyId], references: [id])
+  moveOutDate DateTime
+  reason      String?
+  status      String   @default("PENDING") // PENDING | ACKNOWLEDGED | COMPLETED
+  createdAt   DateTime @default(now())
+}
+
+model Expense {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitId     String?
+  unit       Unit?    @relation(fields: [unitId], references: [id])
+  category   String   @default("MAINTENANCE") // MAINTENANCE | UTILITY | SALARY | REPAIR | OTHER
+  title      String
+  amount     Float
+  vendor     String?
+  spentAt    DateTime @default(now())
+  createdAt  DateTime @default(now())
+}
