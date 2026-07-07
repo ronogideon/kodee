@@ -12,16 +12,36 @@ export function getToken() {
 }
 
 async function request<T>(method: string, path: string, body?: any): Promise<T> {
-  const res = await fetch(BASE + path, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as any).error || "Request failed");
+  let res: Response;
+  try {
+    res = await fetch(BASE + path, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error(`Can't reach the Kodee API at ${BASE}. Check it's running and VITE_API_URL is set.`);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  const raw = await res.text();
+
+  // A non-JSON body almost always means the request hit the static site host
+  // (SPA fallback returns index.html) instead of the API — i.e. VITE_API_URL
+  // is missing or wrong. Fail loudly rather than returning an empty object.
+  if (!contentType.includes("application/json")) {
+    if (!res.ok) throw new Error(`Request failed (${res.status} ${res.statusText}).`);
+    throw new Error(
+      `Expected JSON from ${BASE}${path} but got "${contentType || "no content-type"}". ` +
+        `Set VITE_API_URL to your Kodee API URL (…/api) and rebuild.`
+    );
+  }
+
+  const data = raw ? JSON.parse(raw) : {};
+  if (!res.ok) throw new Error((data as any).error || `Request failed (${res.status}).`);
   return data as T;
 }
 
