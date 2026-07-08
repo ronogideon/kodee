@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { sendSms } from "./sms";
+import { sendBilledSms } from "./wallet";
 import { UNIT_TYPE_LABELS } from "./constants";
 
 const PAYMENT_WINDOW_DAYS = Number(process.env.PAYMENT_WINDOW_DAYS || 5);
@@ -177,8 +177,14 @@ export async function sendRemindersForPeriod(period: string, landlordId?: string
       electricity: inv.electricityAmount,
       total: inv.total - inv.amountPaid,
     });
-    const ok = await sendSms(renter.phone, message);
-    if (ok) {
+    const ok = await sendBilledSms(
+      await landlordIdForInvoice(inv),
+      renter.name,
+      renter.phone,
+      message,
+      "REMINDER"
+    );
+    if (ok.sent) {
       await prisma.invoice.update({
         where: { id: inv.id },
         data: { reminderSentAt: new Date() },
@@ -187,6 +193,15 @@ export async function sendRemindersForPeriod(period: string, landlordId?: string
     }
   }
   return { total: invoices.length, sent };
+}
+
+// Resolve which landlord pays for an invoice's SMS (via unit → property).
+async function landlordIdForInvoice(inv: { tenancy: { unit: { propertyId: string } } }) {
+  const prop = await prisma.property.findUnique({
+    where: { id: inv.tenancy.unit.propertyId },
+    select: { landlordId: true },
+  });
+  return prop?.landlordId || "";
 }
 
 // Recompute an invoice's status from its payments.

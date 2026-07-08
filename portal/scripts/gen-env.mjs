@@ -4,6 +4,9 @@ import { writeFileSync, existsSync, mkdirSync } from "node:fs";
 
 let url = (process.env.API_URL || process.env.VITE_API_URL || "").trim();
 url = url.replace(/\/+$/, ""); // strip trailing slashes
+// Be forgiving: assume https:// if no scheme was given (a scheme-less value is
+// treated as a relative path by the browser and silently breaks).
+if (url && !/^https?:\/\//i.test(url)) url = "https://" + url;
 // Be forgiving: if a bare origin was given, append /api.
 if (url && !/\/api$/.test(url)) url += "/api";
 

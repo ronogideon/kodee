@@ -5,6 +5,7 @@ import authRoutes from "./routes/auth";
 import landlordRoutes from "./routes/landlord";
 import renterRoutes from "./routes/renter";
 import caretakerRoutes from "./routes/caretaker";
+import superadminRoutes from "./routes/superadmin";
 import { startScheduler } from "./scheduler";
 
 const app = express();
@@ -29,7 +30,7 @@ app.use(
 );
 app.use(express.json());
 
-const VERSION = "1.0.5";
+const VERSION = "1.1.0";
 app.get("/api/health", (_req, res) =>
   res.json({ ok: true, service: "kodee", version: VERSION })
 );
@@ -38,6 +39,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/landlord", landlordRoutes);
 app.use("/api/renter", renterRoutes);
 app.use("/api/caretaker", caretakerRoutes);
+app.use("/api/superadmin", superadminRoutes);
 
 // Fallback error handler.
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

@@ -1,6 +1,6 @@
 // Shared constants (SQLite has no native enums, so we validate in-app).
 
-export const ROLES = ["LANDLORD", "RENTER", "CARETAKER"] as const;
+export const ROLES = ["SUPERADMIN", "LANDLORD", "RENTER", "CARETAKER"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const UNIT_TYPES = [

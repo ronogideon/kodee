@@ -16,6 +16,10 @@ function due(per: string, days = 5): Date {
 async function main() {
   console.log("Seeding Kodee…");
   // Clean slate (dev only).
+  await prisma.message.deleteMany();
+  await prisma.smsWalletTxn.deleteMany();
+  await prisma.smsWallet.deleteMany();
+  await prisma.setting.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.invoice.deleteMany();
   await prisma.meterReading.deleteMany();
@@ -242,7 +246,67 @@ async function main() {
   await prisma.expense.create({ data: { propertyId: kile.id, category: "MAINTENANCE", title: "Compound cleaning + garbage", amount: 4000, vendor: "CleanCo", spentAt: new Date() } });
   await prisma.expense.create({ data: { propertyId: kile.id, category: "UTILITY", title: "Borehole pump servicing", amount: 8500, vendor: "AquaTech", spentAt: new Date(new Date().getFullYear(), new Date().getMonth(), 3) } });
 
+  // ── Superadmin + SMS wallet ────────────────────────────────────────────────
+  await prisma.user.create({
+    data: {
+      name: "Kodee Admin",
+      email: "admin@kodee.app",
+      phone: "+254700000000",
+      passwordHash: hash,
+      role: "SUPERADMIN",
+    },
+  });
+
+  await prisma.setting.upsert({
+    where: { key: "smsRatePerSms" },
+    update: {},
+    create: { key: "smsRatePerSms", value: "1.00" },
+  });
+
+  const wallet = await prisma.smsWallet.create({
+    data: {
+      landlordId: landlord.id,
+      balance: 425,
+      toppedUp: 500,
+      spent: 75,
+      txns: {
+        create: [
+          { type: "TOPUP", amount: 500, note: "M-Pesa top-up" },
+          { type: "DEBIT", amount: 75, note: "Monthly reminders (May–Jun)" },
+        ],
+      },
+    },
+  });
+
+  // A few example messages so the log has history.
+  await prisma.message.createMany({
+    data: [
+      {
+        landlordId: landlord.id,
+        toName: "Wanjiku Njeri",
+        toPhone: "+254711111111",
+        body: "Hi Wanjiku, your rent for Riverside Court Unit A1 is due. Rent 15,000 + Water 900 + Garbage 200 = KES 16,100. Please pay within 5 days. — Kodee",
+        kind: "REMINDER",
+        status: "SENT",
+        segments: 1,
+        cost: 1.0,
+      },
+      {
+        landlordId: landlord.id,
+        toName: "Brian Ochieng",
+        toPhone: "+254722222222",
+        body: "Water will be off on Saturday 9am–1pm for tank cleaning at Riverside Court. Sorry for the inconvenience.",
+        kind: "CUSTOM",
+        status: "SENT",
+        segments: 1,
+        cost: 1.0,
+      },
+    ],
+  });
+  void wallet;
+
   console.log("\nSeed complete. Sign in with:");
+  console.log("  Superadmin → admin@kodee.app / kodee1234");
   console.log("  Landlord   → landlord@kodee.app / kodee1234");
   console.log("  Caretaker  → caretaker@kodee.app / kodee1234");
   console.log("  Renter     → wanjiku@kodee.app / kodee1234");

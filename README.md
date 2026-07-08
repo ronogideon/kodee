@@ -7,8 +7,8 @@ Kodee gives a landlord one organised place to run their buildings: track occupan
 ```
 kodee/
 ├── backend/   Express + TypeScript + Prisma (SQLite) — REST API, billing engine, SMS scheduler
-├── admin/     Landlord console — Vite + React + TS + Recharts (the rich, graphical dashboard)
-└── portal/    Tenant + caretaker portal — Vite + React + TS (mobile-first)
+├── admin/     Superadmin console — manage the landlords serviced by Kodee (Vite + React + TS)
+└── portal/    Unified app — landlord console + tenant/caretaker portal (Vite + React + TS + Recharts)
 ```
 
 ---
@@ -17,7 +17,7 @@ kodee/
 
 | Role | Where they log in | What they do |
 |------|-------------------|--------------|
-| **Landlord / Admin** | `admin/` | Properties & units, tenants (current + past), billing, payments, expenses, maintenance, caretakers |
+| **Landlord** | `portal/` | Properties & units, tenants (current + past), billing, payments, expenses, maintenance, caretakers |
 | **Renter** | `portal/` | See invoice + utility breakdown, pay via M-Pesa, raise maintenance tickets, give notice, view history |
 | **Caretaker** | `portal/` | Enter the monthly water-meter reading per unit; bill is auto-calculated and pushed to the tenant's invoice |
 
@@ -87,6 +87,7 @@ All seeded accounts use the password **`kodee1234`**.
 
 | Role | Email |
 |------|-------|
+| Superadmin | `admin@kodee.app` |
 | Landlord | `landlord@kodee.app` |
 | Caretaker | `caretaker@kodee.app` |
 | Tenant | `wanjiku@kodee.app` |

@@ -8,9 +8,13 @@ import {
   sendRemindersForPeriod,
   refreshInvoiceStatus,
 } from "../billing";
+import { getOrCreateWallet, creditWallet, getSmsRate, sendBilledSms } from "../wallet";
 
 const router = Router();
 router.use(authRequired, requireRole("LANDLORD"));
+
+// This router is landlord-only, so the landlord id is always the caller's id.
+const scope = (req: AuthedRequest) => req.user!.id;
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -607,6 +611,89 @@ router.patch("/notices/:id", async (req: AuthedRequest, res) => {
     data: { ...(status && { status }) },
   });
   res.json(updated);
+});
+
+// ── Messages & SMS wallet ────────────────────────────────────────────────────
+
+// Wallet summary: balance, rate, ~SMS remaining, recent ledger.
+router.get("/wallet", async (req: AuthedRequest, res) => {
+  const landlordId = scope(req);
+  const [wallet, rate] = await Promise.all([getOrCreateWallet(landlordId), getSmsRate()]);
+  const txns = await prisma.smsWalletTxn.findMany({
+    where: { walletId: wallet.id },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
+  res.json({
+    balance: wallet.balance,
+    toppedUp: wallet.toppedUp,
+    spent: wallet.spent,
+    ratePerSms: rate,
+    smsRemaining: rate > 0 ? Math.floor(wallet.balance / rate) : 0,
+    txns,
+  });
+});
+
+// Top up the wallet. Demo credits instantly; wire to M-Pesa STK (Daraja) for
+// live collection — on the callback, call creditWallet idempotently.
+router.post("/wallet/topup", async (req: AuthedRequest, res) => {
+  const amount = Number(req.body?.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: "Enter a valid top-up amount." });
+  }
+  if (amount > 100000) {
+    return res.status(400).json({ error: "Top-up too large." });
+  }
+  const wallet = await creditWallet(scope(req), amount, "M-Pesa top-up");
+  res.json({ ok: true, balance: wallet.balance });
+});
+
+// Message log (reminders + custom), newest first.
+router.get("/messages", async (req: AuthedRequest, res) => {
+  const messages = await prisma.message.findMany({
+    where: { landlordId: scope(req) },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  res.json(messages);
+});
+
+// Send a custom message to: one tenancy, all tenants of a property, or all
+// current tenants. Each SMS is billed to the wallet individually.
+router.post("/messages/send", async (req: AuthedRequest, res) => {
+  const landlordId = scope(req);
+  const { body, target, propertyId, tenancyId } = req.body || {};
+  if (!body || !String(body).trim()) {
+    return res.status(400).json({ error: "Message body is required." });
+  }
+
+  const where: any = {
+    active: true,
+    unit: { property: { landlordId } },
+  };
+  if (target === "PROPERTY" && propertyId) where.unit.property.id = propertyId;
+  if (target === "TENANCY" && tenancyId) where.id = tenancyId;
+
+  const tenancies = await prisma.tenancy.findMany({
+    where,
+    include: { renter: true },
+  });
+  if (tenancies.length === 0) {
+    return res.status(400).json({ error: "No matching tenants to message." });
+  }
+
+  let sent = 0;
+  let failed = 0;
+  let lastError: string | undefined;
+  for (const t of tenancies) {
+    const r = await sendBilledSms(landlordId, t.renter.name, t.renter.phone, String(body), "CUSTOM");
+    if (r.sent) sent++;
+    else {
+      failed++;
+      lastError = r.error;
+    }
+  }
+  res.json({ ok: true, sent, failed, total: tenancies.length, lastError });
 });
 
 export default router;

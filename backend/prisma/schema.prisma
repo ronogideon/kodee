@@ -17,7 +17,9 @@ model User {
   email        String   @unique
   phone        String
   passwordHash String
-  role         String // LANDLORD | RENTER | CARETAKER
+  role         String // SUPERADMIN | LANDLORD | RENTER | CARETAKER
+  // Superadmin can suspend a landlord (blocks the landlord and all their users).
+  suspended    Boolean  @default(false)
   // For caretakers/renters: which landlord they belong to (scoping).
   landlordId   String?
   landlord     User?    @relation("LandlordStaff", fields: [landlordId], references: [id])
@@ -26,6 +28,8 @@ model User {
   properties Property[] @relation("LandlordProperties")
   tenancies  Tenancy[]  @relation("RenterTenancies")
   readings   MeterReading[] @relation("CaretakerReadings")
+  wallet     SmsWallet? @relation("WalletOwner")
+  messages   Message[]  @relation("MessageOwner")
 
   createdAt DateTime @default(now())
 }
@@ -187,4 +191,54 @@ model Expense {
   vendor     String?
   spentAt    DateTime @default(now())
   createdAt  DateTime @default(now())
+}
+
+// ── SMS wallet (Dartbit pattern): per-landlord prepaid balance in KES, with a
+// full transaction ledger. Every top-up credit and per-SMS debit is recorded.
+model SmsWallet {
+  id         String   @id @default(cuid())
+  landlordId String   @unique
+  landlord   User     @relation("WalletOwner", fields: [landlordId], references: [id], onDelete: Cascade)
+  balance    Float    @default(0)
+  toppedUp   Float    @default(0) // lifetime credited
+  spent      Float    @default(0) // lifetime debited
+
+  txns SmsWalletTxn[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SmsWalletTxn {
+  id       String    @id @default(cuid())
+  walletId String
+  wallet   SmsWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type     String    // TOPUP | DEBIT | ADJUSTMENT
+  amount   Float     // positive KES value; type gives direction
+  note     String?
+
+  createdAt DateTime @default(now())
+}
+
+// Every outbound SMS is logged here — reminders and custom messages alike.
+model Message {
+  id         String  @id @default(cuid())
+  landlordId String
+  landlord   User    @relation("MessageOwner", fields: [landlordId], references: [id], onDelete: Cascade)
+  toName     String
+  toPhone    String
+  body       String
+  kind       String  // REMINDER | CUSTOM
+  status     String  // SENT | FAILED
+  segments   Int     @default(1)
+  cost       Float   @default(0)
+  error      String?
+
+  createdAt DateTime @default(now())
+}
+
+// Platform-wide key/value settings (e.g. SMS rate), editable from superadmin.
+model Setting {
+  key   String @id
+  value String
 }

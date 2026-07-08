@@ -37,9 +37,14 @@ router.post("/login", async (req, res) => {
   const { email, password } = req.body || {};
   const user = await prisma.user.findUnique({
     where: { email: (email || "").toLowerCase() },
+    include: { landlord: { select: { suspended: true } } },
   });
   if (!user || !(await comparePassword(password || "", user.passwordHash))) {
     return res.status(401).json({ error: "Wrong email or password." });
+  }
+  // A suspended landlord — and everyone under them — can't sign in.
+  if (user.suspended || user.landlord?.suspended) {
+    return res.status(403).json({ error: "This account is suspended. Contact support." });
   }
   const token = signToken({
     id: user.id,

@@ -13,6 +13,7 @@ interface AuthCtx {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (data: any) => Promise<void>;
   logout: () => void;
 }
 
@@ -34,8 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function login(email: string, password: string) {
     const r = await api.post<{ token: string; user: User }>("/auth/login", { email, password });
-    if (r.user.role === "LANDLORD")
-      throw new Error("Landlords sign in through the Kodee console, not the portal.");
+    if (r.user.role === "SUPERADMIN")
+      throw new Error("Superadmins sign in through the Kodee admin console.");
+    setToken(r.token);
+    setUser(r.user);
+  }
+
+  async function register(data: any) {
+    const r = await api.post<{ token: string; user: User }>("/auth/register", data);
     setToken(r.token);
     setUser(r.user);
   }
@@ -45,5 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  return <Ctx.Provider value={{ user, loading, login, logout }}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={{ user, loading, login, register, logout }}>{children}</Ctx.Provider>
+  );
 }
