@@ -32,6 +32,15 @@ export function Tenants() {
     catch (e: any) { toast(e.message, true); }
   }
 
+  async function resetPassword(userId: string, name: string) {
+    if (!confirm(`Reset ${name}'s password? A new temporary password is SMSed to them (billed from your SMS balance).`)) return;
+    try {
+      const r = await api.post<{ tempPassword: string; smsSent: boolean; smsError?: string }>(`/landlord/users/${userId}/reset-password`);
+      if (r.smsSent) toast(`Password reset — SMS sent to ${name}`);
+      else alert(`Password reset, but the SMS failed (${r.smsError}).\n\nTemporary password: ${r.tempPassword}\nShare it with ${name} directly.`);
+    } catch (e: any) { toast(e.message, true); }
+  }
+
   if (!tenants) return <Layout title="Tenants"><Spinner /></Layout>;
   const list = tenants.filter((t) => (tab === "current" ? t.active : !t.active));
 
@@ -75,6 +84,7 @@ export function Tenants() {
                     {t.active && (
                       <>
                         <button className="btn btn-ghost btn-sm" onClick={() => setPayFor(t)}>Record payment</button>{" "}
+                        <button className="btn btn-ghost btn-sm" title="Reset password (SMS, billed)" onClick={() => resetPassword(t.renter.id, t.renter.name)}>🔑</button>{" "}
                         <button className="btn btn-ghost btn-sm" onClick={() => endTenancy(t)}>Move out</button>
                       </>
                     )}

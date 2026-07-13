@@ -66,7 +66,7 @@ export async function sendBilledSms(
   toName: string,
   toPhone: string,
   body: string,
-  kind: "REMINDER" | "CUSTOM"
+  kind: "REMINDER" | "CUSTOM" | "PASSWORD"
 ): Promise<BilledSendResult> {
   const segments = smsSegments(body);
   const rate = await getSmsRate();
@@ -102,7 +102,7 @@ export async function sendBilledSms(
         walletId: wallet.id,
         type: "DEBIT",
         amount: cost,
-        note: `${kind === "REMINDER" ? "Reminder" : "Message"} to ${toName} (${segments} segment${segments === 1 ? "" : "s"})`,
+        note: `${kind === "REMINDER" ? "Reminder" : kind === "PASSWORD" ? "Password reset" : "Message"} to ${toName} (${segments} segment${segments === 1 ? "" : "s"})`,
       },
     }),
     prisma.message.create({

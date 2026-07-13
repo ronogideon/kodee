@@ -30,6 +30,7 @@ model User {
   readings   MeterReading[] @relation("CaretakerReadings")
   wallet     SmsWallet? @relation("WalletOwner")
   messages   Message[]  @relation("MessageOwner")
+  darajaConfig DarajaConfig? @relation("DarajaOwner")
 
   createdAt DateTime @default(now())
 }
@@ -241,4 +242,44 @@ model Message {
 model Setting {
   key   String @id
   value String
+}
+
+// ── M-Pesa (Daraja) ──────────────────────────────────────────────────────────
+
+// A landlord's settlement method: their own paybill/till that receives rent.
+model DarajaConfig {
+  id             String  @id @default(cuid())
+  landlordId     String  @unique
+  landlord       User    @relation("DarajaOwner", fields: [landlordId], references: [id], onDelete: Cascade)
+  type           String  @default("PAYBILL") // PAYBILL | TILL
+  shortcode      String
+  passkey        String
+  consumerKey    String
+  consumerSecret String
+  accountRef     String  @default("RENT")
+  active         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Every STK push we initiate. purpose branches the callback:
+//   RENT      → records a Payment on the invoice (landlord's own Daraja)
+//   SMS_TOPUP → credits the landlord's SMS wallet (Kodee's central Daraja)
+model MpesaTransaction {
+  id                String  @id @default(cuid())
+  purpose           String  // RENT | SMS_TOPUP
+  landlordId        String?
+  invoiceId         String?
+  tenancyId         String?
+  phone             String
+  amount            Float
+  checkoutRequestId String? @unique
+  merchantRequestId String?
+  receipt           String? @unique
+  status            String  @default("PENDING") // PENDING | PAID | FAILED
+  resultDesc        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

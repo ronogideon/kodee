@@ -88,7 +88,7 @@ export function Messages() {
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{m.body}</div>
                       {m.error && <div style={{ color: "var(--danger)", marginTop: 2 }}>{m.error}</div>}
                     </td>
-                    <td><Badge cls={m.kind === "REMINDER" ? "badge-info" : "badge-muted"} label={m.kind === "REMINDER" ? "Reminder" : "Custom"} /></td>
+                    <td><Badge cls={m.kind === "REMINDER" ? "badge-info" : m.kind === "PASSWORD" ? "badge-warn" : "badge-muted"} label={m.kind === "REMINDER" ? "Reminder" : m.kind === "PASSWORD" ? "Password" : "Custom"} /></td>
                     <td style={{ fontSize: 13 }}>{m.status === "SENT" ? money(m.cost) : "—"}</td>
                     <td><Badge cls={m.status === "SENT" ? "badge-ok" : "badge-danger"} label={m.status === "SENT" ? "Sent" : "Failed"} /></td>
                     <td className="muted" style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>{date(m.createdAt)}</td>
@@ -128,25 +128,73 @@ export function Messages() {
 function TopupModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const [amount, setAmount] = useState(500);
+  const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+
+  async function poll(txnId: string) {
+    for (let i = 0; i < 24; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        const s = await api.get<{ status: string; resultDesc?: string }>(`/landlord/wallet/topup/${txnId}/status`);
+        if (s.status === "PAID") return onDone();
+        if (s.status === "FAILED") {
+          setWaiting(false);
+          return toast(s.resultDesc || "Payment was not completed.", true);
+        }
+      } catch {}
+    }
+    setWaiting(false);
+    toast("Still waiting for M-Pesa — check the ledger in a moment.", true);
+  }
+
   async function topup() {
     setBusy(true);
-    try { await api.post("/landlord/wallet/topup", { amount: Number(amount) }); onDone(); }
-    catch (e: any) { toast(e.message, true); } finally { setBusy(false); }
+    try {
+      const r = await api.post<{ pending?: boolean; txnId?: string; ok?: boolean }>("/landlord/wallet/topup", {
+        amount: Number(amount),
+        ...(phone ? { phone } : {}),
+      });
+      if (r.pending && r.txnId) {
+        setWaiting(true);
+        poll(r.txnId);
+      } else {
+        onDone();
+      }
+    } catch (e: any) {
+      toast(e.message, true);
+    } finally {
+      setBusy(false);
+    }
   }
+
+  if (waiting) {
+    return (
+      <Modal title="Check your phone" subtitle="An M-Pesa prompt has been sent. Enter your PIN to buy SMS credits." onClose={onClose}>
+        <div style={{ display: "grid", placeItems: "center", padding: 20 }}>
+          <div className="spinner" />
+          <div className="muted" style={{ marginTop: 14, fontSize: 13.5 }}>Waiting for confirmation…</div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal title="Top up SMS balance" subtitle="Pay via M-Pesa. (Demo credits instantly — STK push wiring is the production step.)" onClose={onClose}
+    <Modal title="Buy SMS credits" subtitle="Paid to Kodee via M-Pesa STK. Credits your balance on confirmation." onClose={onClose}
       footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy || amount <= 0} onClick={topup}>Pay {money(Number(amount))}</button></>}>
       <Field label="Amount (KES)">
         <input className="input" type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} style={{ fontSize: 20, fontWeight: 700, textAlign: "center" }} />
       </Field>
-      <div className="hstack" style={{ gap: 8 }}>
+      <div className="hstack" style={{ gap: 8, marginBottom: 14 }}>
         {[200, 500, 1000, 2000].map((v) => (
           <button key={v} type="button" className={"badge " + (amount === v ? "badge-info" : "badge-muted")} style={{ cursor: "pointer", padding: "7px 12px" }} onClick={() => setAmount(v)}>
             {money(v)}
           </button>
         ))}
       </div>
+      <Field label="M-Pesa phone (blank = your account phone)">
+        <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07XX XXX XXX" />
+      </Field>
     </Modal>
   );
 }

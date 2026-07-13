@@ -250,7 +250,7 @@ async function main() {
   await prisma.user.create({
     data: {
       name: "Kodee Admin",
-      email: "admin@kodee.app",
+      email: "superadmin@kodee.app",
       phone: "+254700000000",
       passwordHash: hash,
       role: "SUPERADMIN",
@@ -306,7 +306,7 @@ async function main() {
   void wallet;
 
   console.log("\nSeed complete. Sign in with:");
-  console.log("  Superadmin → admin@kodee.app / kodee1234");
+  console.log("  Superadmin → superadmin@kodee.app / kodee1234");
   console.log("  Landlord   → landlord@kodee.app / kodee1234");
   console.log("  Caretaker  → caretaker@kodee.app / kodee1234");
   console.log("  Renter     → wanjiku@kodee.app / kodee1234");

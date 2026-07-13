@@ -51,7 +51,7 @@ export function Login() {
             </button>
           </form>
           <div className="muted" style={{ fontSize: 12.5, marginTop: 14, textAlign: "center" }}>
-            Demo: admin@kodee.app / kodee1234
+            Demo: superadmin@kodee.app / kodee1234
           </div>
         </Card>
         <div className="powered" style={{ textAlign: "center", border: "none", color: "var(--muted)" }}>

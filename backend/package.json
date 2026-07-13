@@ -1,6 +1,6 @@
 {
   "name": "kodee-backend",
-  "version": "1.1.1",
+  "version": "1.1.3",
   "private": true,
   "description": "Kodee — property management API. Powered by Dartbit.",
   "main": "dist/index.js",

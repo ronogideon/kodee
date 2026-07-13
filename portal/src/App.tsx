@@ -16,6 +16,7 @@ import { Expenses } from "./pages/landlord/Expenses";
 import { Requests as LandlordRequests } from "./pages/landlord/Requests";
 import { Team } from "./pages/landlord/Team";
 import { Messages } from "./pages/landlord/Messages";
+import { Settings } from "./pages/landlord/Settings";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/messages" element={<Messages />} />
         <Route path="/requests" element={<LandlordRequests />} />
         <Route path="/team" element={<Team />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );

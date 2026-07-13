@@ -6,6 +6,7 @@ import landlordRoutes from "./routes/landlord";
 import renterRoutes from "./routes/renter";
 import caretakerRoutes from "./routes/caretaker";
 import superadminRoutes from "./routes/superadmin";
+import darajaRoutes from "./routes/daraja";
 import { startScheduler } from "./scheduler";
 
 const app = express();
@@ -44,7 +45,7 @@ app.use(
 );
 app.use(express.json());
 
-const VERSION = "1.1.1";
+const VERSION = "1.1.3";
 app.get("/api/health", (_req, res) =>
   res.json({ ok: true, service: "kodee", version: VERSION })
 );
@@ -54,6 +55,7 @@ app.use("/api/landlord", landlordRoutes);
 app.use("/api/renter", renterRoutes);
 app.use("/api/caretaker", caretakerRoutes);
 app.use("/api/superadmin", superadminRoutes);
+app.use("/api/daraja", darajaRoutes);
 
 // Fallback error handler.
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -76,7 +78,7 @@ async function ensureSuperadmin() {
     const { hashPassword } = await import("./auth");
     const existing = await prisma.user.findFirst({ where: { role: "SUPERADMIN" } });
     if (existing) return;
-    const email = (process.env.SUPERADMIN_EMAIL || "admin@kodee.app").toLowerCase();
+    const email = (process.env.SUPERADMIN_EMAIL || "superadmin@kodee.app").toLowerCase();
     const password = process.env.SUPERADMIN_PASSWORD || "kodee1234";
     await prisma.user.create({
       data: {

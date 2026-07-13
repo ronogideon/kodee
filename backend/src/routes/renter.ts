@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { authRequired, requireRole, AuthedRequest } from "../auth";
 import { currentPeriod, periodLabel, refreshInvoiceStatus } from "../billing";
+import { stkPush, callbackUrl } from "../daraja";
 
 const router = Router();
 router.use(authRequired, requireRole("RENTER"));
@@ -87,12 +88,12 @@ router.get("/invoices", async (req: AuthedRequest, res) => {
   res.json(invoices);
 });
 
-// "Pay now" — records an M-Pesa payment intent. In production this hands off
-// to Daraja STK push; here it records the payment against the invoice.
+// "Pay now" — STK push to the landlord's settlement method (their DarajaConfig)
+// when configured; otherwise the demo path records the payment directly.
 router.post("/pay", async (req: AuthedRequest, res) => {
   const tenancy = await activeTenancy(req.user!.id);
   if (!tenancy) return res.status(400).json({ error: "No active tenancy." });
-  const { amount, period, reference } = req.body || {};
+  const { amount, period, phone } = req.body || {};
   const per = period || currentPeriod();
   const invoice = await prisma.invoice.findUnique({
     where: { tenancyId_period: { tenancyId: tenancy.id, period: per } },
@@ -100,18 +101,77 @@ router.post("/pay", async (req: AuthedRequest, res) => {
   if (!invoice)
     return res.status(404).json({ error: "No invoice for that month yet." });
   const payAmount = Number(amount) || invoice.total - invoice.amountPaid;
+  if (!(payAmount > 0)) return res.status(400).json({ error: "Nothing left to pay." });
 
+  // Resolve the landlord's settlement method.
+  const property = await prisma.property.findUnique({
+    where: { id: tenancy.unit.propertyId },
+    select: { landlordId: true },
+  });
+  const config = property
+    ? await prisma.darajaConfig.findUnique({ where: { landlordId: property.landlordId } })
+    : null;
+
+  if (config?.active && callbackUrl()) {
+    const renter = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const msisdnSource = phone || renter?.phone || "";
+    try {
+      const stk = await stkPush({
+        creds: {
+          consumerKey: config.consumerKey,
+          consumerSecret: config.consumerSecret,
+          shortcode: config.shortcode,
+          passkey: config.passkey,
+          type: config.type as any,
+          accountRef: config.accountRef,
+        },
+        phone: msisdnSource,
+        amount: payAmount,
+        description: "Rent",
+      });
+      const txn = await prisma.mpesaTransaction.create({
+        data: {
+          purpose: "RENT",
+          landlordId: property!.landlordId,
+          invoiceId: invoice.id,
+          tenancyId: tenancy.id,
+          phone: msisdnSource,
+          amount: payAmount,
+          checkoutRequestId: stk.checkoutRequestId,
+          merchantRequestId: stk.merchantRequestId,
+        },
+      });
+      return res.json({ pending: true, txnId: txn.id });
+    } catch (err: any) {
+      return res.status(502).json({ error: err.message || "M-Pesa request failed. Try again." });
+    }
+  }
+
+  // Demo fallback — no settlement method configured.
   const payment = await prisma.payment.create({
     data: {
       tenancyId: tenancy.id,
       invoiceId: invoice.id,
       amount: payAmount,
       method: "MPESA",
-      reference: reference || `KODEE-${Date.now()}`,
+      reference: `KODEE-${Date.now()}`,
     },
   });
   await refreshInvoiceStatus(invoice.id);
   res.json({ ok: true, payment });
+});
+
+// Poll an STK transaction the renter initiated.
+router.get("/pay/status/:id", async (req: AuthedRequest, res) => {
+  const tenancies = await prisma.tenancy.findMany({
+    where: { renterId: req.user!.id },
+    select: { id: true },
+  });
+  const txn = await prisma.mpesaTransaction.findFirst({
+    where: { id: req.params.id, tenancyId: { in: tenancies.map((t) => t.id) } },
+  });
+  if (!txn) return res.status(404).json({ error: "Transaction not found" });
+  res.json({ status: txn.status, resultDesc: txn.resultDesc, receipt: txn.receipt });
 });
 
 router.get("/tickets", async (req: AuthedRequest, res) => {

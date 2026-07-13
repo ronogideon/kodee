@@ -20,6 +20,15 @@ export function Team() {
     catch (e: any) { toast(e.message, true); }
   }
 
+  async function resetPassword(s: Staff) {
+    if (!confirm(`Reset ${s.name}'s password? A new temporary password is SMSed to them (billed from your SMS balance).`)) return;
+    try {
+      const r = await api.post<{ tempPassword: string; smsSent: boolean; smsError?: string }>(`/landlord/users/${s.id}/reset-password`);
+      if (r.smsSent) toast(`Password reset — SMS sent to ${s.name}`);
+      else alert(`Password reset, but the SMS failed (${r.smsError}).\n\nTemporary password: ${r.tempPassword}\nShare it with ${s.name} directly.`);
+    } catch (e: any) { toast(e.message, true); }
+  }
+
   if (!staff) return <Layout title="Team"><Spinner /></Layout>;
 
   return (
@@ -37,7 +46,10 @@ export function Team() {
                   <td><b>{s.name}</b></td>
                   <td style={{ fontSize: 13.5 }}>{s.email}<div className="muted" style={{ fontSize: 12.5 }}>{s.phone}</div></td>
                   <td style={{ fontSize: 13 }}>{date(s.createdAt)}</td>
-                  <td style={{ textAlign: "right" }}><button className="btn btn-ghost btn-sm" onClick={() => del(s)}>Remove</button></td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button className="btn btn-ghost btn-sm" title="Reset password (SMS, billed)" onClick={() => resetPassword(s)}>🔑 Reset</button>{" "}
+                    <button className="btn btn-ghost btn-sm" onClick={() => del(s)}>Remove</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

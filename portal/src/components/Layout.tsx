@@ -12,6 +12,7 @@ const NAV = [
   { to: "/requests", label: "Requests", icon: "🛠️" },
   { to: "/messages", label: "Messages", icon: "💬" },
   { to: "/team", label: "Team", icon: "🔑" },
+  { to: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
 export function Layout({ title, subtitle, actions, children }: {

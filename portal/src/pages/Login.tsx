@@ -2,22 +2,31 @@ import { useState } from "react";
 import { useAuth } from "../lib/auth";
 import { Card, LogoMark } from "../components/ui";
 
+type Tab = "tenant" | "landlord";
+
 export function Login() {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [tab, setTab] = useState<Tab>("tenant");
+  const [signup, setSignup] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
   const set = (k: string) => (e: any) => setForm({ ...form, [k]: e.target.value });
 
+  function switchTab(t: Tab) {
+    setTab(t);
+    setSignup(false);
+    setErr("");
+  }
+
   async function submit(e: any) {
     e.preventDefault();
     setErr("");
     setBusy(true);
     try {
-      if (mode === "login") await login(form.email, form.password);
-      else await register(form);
+      if (signup) await register(form);
+      else await login(form.email, form.password);
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -32,20 +41,22 @@ export function Login() {
           <LogoMark />
           Kodee
         </div>
-        <div className="auth-sub">Property management, the organised way.</div>
+        <div className="auth-sub">
+          {tab === "tenant" ? "Your home, sorted — invoices, payments and requests." : "Property management, the organised way."}
+        </div>
 
         <Card className="card-pad">
           <div className="tabs" style={{ marginBottom: 18 }}>
-            <button className={"tab" + (mode === "login" ? " active" : "")} onClick={() => setMode("login")}>
-              Sign in
+            <button className={"tab" + (tab === "tenant" ? " active" : "")} style={{ flex: 1 }} onClick={() => switchTab("tenant")}>
+              Tenant / Caretaker
             </button>
-            <button className={"tab" + (mode === "register" ? " active" : "")} onClick={() => setMode("register")}>
-              New landlord
+            <button className={"tab" + (tab === "landlord" ? " active" : "")} style={{ flex: 1 }} onClick={() => switchTab("landlord")}>
+              Landlord
             </button>
           </div>
 
           <form onSubmit={submit}>
-            {mode === "register" && (
+            {signup && (
               <>
                 <div className="field">
                   <label>Full name</label>
@@ -73,15 +84,31 @@ export function Login() {
             )}
 
             <button className="btn btn-primary btn-block" disabled={busy}>
-              {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create landlord account"}
+              {busy ? "Please wait…" : signup ? "Create landlord account" : "Sign in"}
             </button>
           </form>
 
-          {mode === "login" && (
+          {tab === "tenant" && (
             <div className="muted" style={{ fontSize: 12.5, marginTop: 14, textAlign: "center" }}>
-              Demo — landlord@kodee.app · wanjiku@kodee.app · caretaker@kodee.app
-              <br />
-              password: kodee1234
+              Your landlord sets up your account — use the credentials they sent you.
+            </div>
+          )}
+
+          {tab === "landlord" && (
+            <div style={{ marginTop: 16, textAlign: "center", borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+              {signup ? (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSignup(false)}>
+                  ← Back to sign in
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSignup(true)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--brand)", fontWeight: 700, fontSize: 14, fontFamily: "inherit" }}
+                >
+                  Start managing properties →
+                </button>
+              )}
             </div>
           )}
         </Card>

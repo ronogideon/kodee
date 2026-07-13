@@ -126,16 +126,64 @@ export function Home() {
 function PayModal({ balance, onClose, onPaid }: { balance: number; onClose: () => void; onPaid: () => void }) {
   const toast = useToast();
   const [amount, setAmount] = useState(balance);
+  const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+
+  async function poll(txnId: string) {
+    for (let i = 0; i < 24; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        const s = await api.get<{ status: string; resultDesc?: string }>(`/renter/pay/status/${txnId}`);
+        if (s.status === "PAID") return onPaid();
+        if (s.status === "FAILED") {
+          setWaiting(false);
+          return toast(s.resultDesc || "Payment was not completed.", true);
+        }
+      } catch {}
+    }
+    setWaiting(false);
+    toast("Still waiting for M-Pesa — refresh in a moment to check.", true);
+  }
+
   async function pay() {
     setBusy(true);
-    try { await api.post("/renter/pay", { amount: Number(amount) }); onPaid(); }
-    catch (e: any) { toast(e.message, true); } finally { setBusy(false); }
+    try {
+      const r = await api.post<{ pending?: boolean; txnId?: string; ok?: boolean }>("/renter/pay", {
+        amount: Number(amount),
+        ...(phone ? { phone } : {}),
+      });
+      if (r.pending && r.txnId) {
+        setWaiting(true);
+        poll(r.txnId);
+      } else {
+        onPaid();
+      }
+    } catch (e: any) {
+      toast(e.message, true);
+    } finally {
+      setBusy(false);
+    }
   }
+
+  if (waiting) {
+    return (
+      <Modal title="Check your phone" subtitle="An M-Pesa prompt has been sent. Enter your PIN to complete the payment." onClose={onClose}>
+        <div style={{ display: "grid", placeItems: "center", padding: 20 }}>
+          <div className="spinner" />
+          <div className="muted" style={{ marginTop: 14, fontSize: 13.5 }}>Waiting for confirmation…</div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal title="Pay with M-Pesa" subtitle="A prompt would be sent to your phone. (Demo records the payment directly.)" onClose={onClose}
+    <Modal title="Pay with M-Pesa" subtitle="You'll get an STK prompt on your phone to confirm." onClose={onClose}
       footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy} onClick={pay}>Pay {money(Number(amount))}</button></>}>
       <Field label="Amount"><input className="input" type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} /></Field>
+      <Field label="M-Pesa phone (blank = your account phone)">
+        <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07XX XXX XXX" />
+      </Field>
     </Modal>
   );
 }

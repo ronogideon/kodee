@@ -9,6 +9,7 @@ import {
   refreshInvoiceStatus,
 } from "../billing";
 import { getOrCreateWallet, creditWallet, getSmsRate, sendBilledSms } from "../wallet";
+import { centralDarajaCreds, stkPush, callbackUrl } from "../daraja";
 
 const router = Router();
 router.use(authRequired, requireRole("LANDLORD"));
@@ -634,8 +635,8 @@ router.get("/wallet", async (req: AuthedRequest, res) => {
   });
 });
 
-// Top up the wallet. Demo credits instantly; wire to M-Pesa STK (Daraja) for
-// live collection — on the callback, call creditWallet idempotently.
+// Top up the wallet. STK push to Kodee's central Daraja when configured;
+// otherwise the demo path credits instantly.
 router.post("/wallet/topup", async (req: AuthedRequest, res) => {
   const amount = Number(req.body?.amount);
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -644,8 +645,46 @@ router.post("/wallet/topup", async (req: AuthedRequest, res) => {
   if (amount > 100000) {
     return res.status(400).json({ error: "Top-up too large." });
   }
+
+  const central = centralDarajaCreds();
+  if (central && callbackUrl()) {
+    const me = await prisma.user.findUnique({ where: { id: scope(req) } });
+    const phone = req.body?.phone || me?.phone || "";
+    try {
+      const stk = await stkPush({
+        creds: central,
+        phone,
+        amount,
+        description: "SMS credits",
+      });
+      const txn = await prisma.mpesaTransaction.create({
+        data: {
+          purpose: "SMS_TOPUP",
+          landlordId: scope(req),
+          phone,
+          amount,
+          checkoutRequestId: stk.checkoutRequestId,
+          merchantRequestId: stk.merchantRequestId,
+        },
+      });
+      return res.json({ pending: true, txnId: txn.id });
+    } catch (err: any) {
+      return res.status(502).json({ error: err.message || "M-Pesa request failed. Try again." });
+    }
+  }
+
+  // Demo fallback — central Daraja not configured.
   const wallet = await creditWallet(scope(req), amount, "M-Pesa top-up");
   res.json({ ok: true, balance: wallet.balance });
+});
+
+// Poll a top-up transaction.
+router.get("/wallet/topup/:id/status", async (req: AuthedRequest, res) => {
+  const txn = await prisma.mpesaTransaction.findFirst({
+    where: { id: req.params.id, landlordId: scope(req), purpose: "SMS_TOPUP" },
+  });
+  if (!txn) return res.status(404).json({ error: "Transaction not found" });
+  res.json({ status: txn.status, resultDesc: txn.resultDesc, receipt: txn.receipt });
 });
 
 // Message log (reminders + custom), newest first.
@@ -695,5 +734,86 @@ router.post("/messages/send", async (req: AuthedRequest, res) => {
   }
   res.json({ ok: true, sent, failed, total: tenancies.length, lastError });
 });
+
+// ── Settlement method (landlord's own Daraja) ───────────────────────────────
+
+router.get("/settlement", async (req: AuthedRequest, res) => {
+  const config = await prisma.darajaConfig.findUnique({ where: { landlordId: scope(req) } });
+  if (!config) return res.json({ configured: false });
+  res.json({
+    configured: true,
+    type: config.type,
+    shortcode: config.shortcode,
+    accountRef: config.accountRef,
+    active: config.active,
+    // Secrets are write-only; presence flags are enough for the UI.
+    hasCredentials: !!(config.consumerKey && config.consumerSecret && config.passkey),
+  });
+});
+
+router.put("/settlement", async (req: AuthedRequest, res) => {
+  const landlordId = scope(req);
+  const { type, shortcode, passkey, consumerKey, consumerSecret, accountRef, active } =
+    req.body || {};
+  if (!shortcode) return res.status(400).json({ error: "Shortcode is required." });
+
+  const existing = await prisma.darajaConfig.findUnique({ where: { landlordId } });
+  const data: any = {
+    type: type === "TILL" ? "TILL" : "PAYBILL",
+    shortcode: String(shortcode).trim(),
+    accountRef: (accountRef || "RENT").trim(),
+    active: active !== false,
+    // Only overwrite secrets when provided (so saving other fields keeps them).
+    ...(passkey ? { passkey } : {}),
+    ...(consumerKey ? { consumerKey } : {}),
+    ...(consumerSecret ? { consumerSecret } : {}),
+  };
+
+  if (!existing && (!passkey || !consumerKey || !consumerSecret)) {
+    return res.status(400).json({ error: "Passkey, consumer key and consumer secret are required." });
+  }
+
+  const config = existing
+    ? await prisma.darajaConfig.update({ where: { landlordId }, data })
+    : await prisma.darajaConfig.create({ data: { landlordId, ...data } });
+  res.json({ ok: true, active: config.active });
+});
+
+// ── Password resets (SMS-billed) ────────────────────────────────────────────
+
+// Reset a tenant's or caretaker's password: sets a new temporary password and
+// SMSes it to them (billed from the wallet). The temp password is also
+// returned so the landlord can pass it on if the SMS fails.
+router.post("/users/:id/reset-password", async (req: AuthedRequest, res) => {
+  const landlordId = scope(req);
+  const target = await prisma.user.findFirst({
+    where: { id: req.params.id, landlordId, role: { in: ["RENTER", "CARETAKER"] } },
+  });
+  if (!target) return res.status(404).json({ error: "User not found" });
+
+  const temp = generateTempPassword();
+  await prisma.user.update({
+    where: { id: target.id },
+    data: { passwordHash: await hashPassword(temp) },
+  });
+
+  const sms = await sendBilledSms(
+    landlordId,
+    target.name,
+    target.phone,
+    `Hi ${target.name.split(" ")[0]}, your Kodee password was reset. New password: ${temp} — sign in and keep it safe.`,
+    "PASSWORD"
+  );
+
+  res.json({ ok: true, tempPassword: temp, smsSent: sms.sent, smsError: sms.error });
+});
+
+function generateTempPassword(): string {
+  // Unambiguous alphabet (no 0/O/1/l/I), 8 chars.
+  const chars = "abcdefghjkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
 
 export default router;

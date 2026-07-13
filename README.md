@@ -87,7 +87,7 @@ All seeded accounts use the password **`kodee1234`**.
 
 | Role | Email |
 |------|-------|
-| Superadmin | `admin@kodee.app` |
+| Superadmin | `superadmin@kodee.app` |
 | Landlord | `landlord@kodee.app` |
 | Caretaker | `caretaker@kodee.app` |
 | Tenant | `wanjiku@kodee.app` |
